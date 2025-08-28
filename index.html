@@ -1,97 +1,203 @@
 <!DOCTYPE html>
 <html lang="pt">
 <head>
-  <meta charset="UTF-8">
-  <title>Dashboard Sensores + Mapa</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <style>
-    body { margin: 0; font-family: Arial, sans-serif; }
-    #map { height: 60vh; }
-    #info { padding: 10px; background: #f8f8f8; font-size: 16px; }
-    .sensor { margin: 5px 0; }
-    .compass-arrow {
-      display: inline-block;
-      transform-origin: center;
-      font-size: 24px;
-      transition: transform 0.2s;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Sensores + Fatecs Próximas</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; }
+        #map { height: 60vh; width: 100%; }
+        #dashboard { padding: 15px; background: #ffffff; }
+        .info-panel { text-align: center; padding: 20px; border-top: 1px solid #ddd; }
+        .info-panel h2 { margin-top: 0; color: #333; }
+        .info-panel p { font-size: 1.2em; color: #555; }
+        #closest-fatec-name { font-weight: bold; color: #d90429; }
+        .sensor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 15px; background: #f8f8f8; border-top: 1px solid #ddd;}
+        .sensor { background-color: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .sensor-title { font-weight: bold; color: #666; font-size: 0.9em; margin-bottom: 5px; }
+        .sensor-value { font-size: 1em; color: #333; }
+        .compass-arrow { display: inline-block; transform-origin: center; font-size: 20px; transition: transform 0.3s ease-out; vertical-align: middle; }
+        .user-icon { font-size: 24px; text-align: center; line-height: 24px; }
+    </style>
 </head>
 <body>
-  <div id="map"></div>
-  <div id="info">
-    <div class="sensor">📍 Localização: <span id="location">Aguardando...</span></div>
-    <div class="sensor">🧭 Bússola: <span id="compass">Aguardando...</span> <span class="compass-arrow" id="arrow">⬆️</span></div>
-    <div class="sensor">📐 Acelerômetro: <span id="motion">Aguardando...</span></div>
-    <div class="sensor">💡 Luz ambiente: <span id="light">Aguardando...</span></div>
-  </div>
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script>
-    // ==== MAPA LEAFLET ====
-    const map = L.map('map').setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-    const userIcon = L.divIcon({
-      html: "📍",
-      className: "user-icon",
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
-    });
-    const marker = L.marker([0, 0], { icon: userIcon }).addTo(map);
-    function updateLocation(position) {
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
-      marker.setLatLng([lat, lon]);
-      map.setView([lat, lon], 16);
-      document.getElementById("location").textContent = `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`;
-    }
-    function error(err) {
-      document.getElementById("location").textContent = "Erro: " + err.message;
-    }
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(updateLocation, error, { enableHighAccuracy: true });
-    } else {
-      document.getElementById("location").textContent = "Geolocalização não suportada.";
-    }
-    // ==== BÚSSOLA ====
-    if (window.DeviceOrientationEvent) {
-      window.addEventListener("deviceorientation", function(event) {
-        if (event.absolute || event.webkitCompassHeading !== undefined) {
-          const heading = event.webkitCompassHeading || 360 - event.alpha;
-          document.getElementById("compass").textContent = heading.toFixed(2) + "°";
-          document.getElementById("arrow").style.transform = `rotate(${heading}deg)`;
-        }
-      }, true);
-    } else {
-      document.getElementById("compass").textContent = "Não suportado.";
-    }
-    // ==== ACELERÔMETRO ====
-    if (window.DeviceMotionEvent) {
-      window.addEventListener("devicemotion", function(event) {
-        const x = event.acceleration.x || 0;
-        const y = event.acceleration.y || 0;
-        const z = event.acceleration.z || 0;
-        document.getElementById("motion").textContent =
-          `X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}, Z: ${z.toFixed(2)}`;
-      });
-    } else {
-      document.getElementById("motion").textContent = "Não suportado.";
-    }
-    // ==== SENSOR DE LUZ ====
-    if ('AmbientLightSensor' in window) {
-      try {
-        const sensor = new AmbientLightSensor();
-        sensor.addEventListener('reading', () => {
-          document.getElementById("light").textContent = sensor.illuminance + " lux";
+
+    <div id="map"></div>
+
+    <div id="dashboard">
+        <div class="info-panel">
+            <h2>Fatec Mais Próxima</h2>
+            <p><span id="closest-fatec-name">Calculando...</span><br>
+            <span id="closest-fatec-dist"></span></p>
+        </div>
+
+        <div class="sensor-grid">
+            <div class="sensor">
+                <div class="sensor-title">📍 Sua Localização</div>
+                <div class="sensor-value" id="location">Aguardando permissão...</div>
+            </div>
+            <div class="sensor">
+                <div class="sensor-title">🧭 Bússola</div>
+                <div class="sensor-value" id="compass">
+                    <span id="compass-value">--</span>° 
+                    <span class="compass-arrow" id="arrow">⬆️</span>
+                </div>
+            </div>
+            <div class="sensor">
+                <div class="sensor-title">📐 Acelerômetro (x, y, z)</div>
+                <div class="sensor-value" id="motion">--</div>
+            </div>
+            <div class="sensor">
+                <div class="sensor-title">💡 Luz Ambiente</div>
+                <div class="sensor-value" id="light">--</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        // --- CONFIGURAÇÃO INICIAL ---
+        const map = L.map('map').setView([-23.55052, -46.633308], 10); // Centro de SP
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Ícone customizado para o usuário
+        const userIcon = L.divIcon({
+            html: "😀", // Emoji para o usuário
+            className: "user-icon",
+            iconSize: [24, 24],
+            iconAnchor: [12, 24]
         });
-        sensor.start();
-      } catch (err) {
-        document.getElementById("light").textContent = "Erro: " + err.message;
-      }
-    } else {
-      document.getElementById("light").textContent = "Não suportado.";
-    }
-  </script>
+        const userMarker = L.marker([0, 0], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+
+        // --- DADOS DAS FATECS (Exemplos, incluindo algumas da capital e região) ---
+        const fatecs = [
+            { name: "Fatec São Paulo", lat: -23.5348, lon: -46.6416 },
+            { name: "Fatec Ipiranga", lat: -23.5932, lon: -46.5954 },
+            { name: "Fatec Zona Leste", lat: -23.5428, lon: -46.4632 },
+            { name: "Fatec Zona Sul", lat: -23.6698, lon: -46.7214 },
+            { name: "Fatec Tatuapé", lat: -23.5350, lon: -46.5701 },
+            { name: "Fatec Guarulhos", lat: -23.4475, lon: -46.5222 },
+            { name: "Fatec Osasco", lat: -23.5329, lon: -46.7925 },
+            { name: "Fatec Barueri", lat: -23.5042, lon: -46.8525 },
+            { name: "Fatec Carapicuíba", lat: -23.5225, lon: -46.8373 },
+            { name: "Fatec Mauá", lat: -23.6661, lon: -46.4611 },
+            { name: "Fatec Santo André", lat: -23.6738, lon: -46.5386 },
+            { name: "Fatec São Bernardo do Campo", lat: -23.7118, lon: -46.5663 },
+            { name: "Fatec São Caetano do Sul", lat: -23.6198, lon: -46.5645 }
+        ];
+
+        // Adiciona os marcadores das Fatecs ao mapa
+        fatecs.forEach(fatec => {
+            L.marker([fatec.lat, fatec.lon])
+                .addTo(map)
+                .bindPopup(`<b>${fatec.name}</b>`);
+        });
+
+        // --- FUNÇÕES AUXILIARES ---
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Raio da Terra em km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // Distância em km
+        }
+
+        function findClosestFatec(userLat, userLon) {
+            let closest = null;
+            let minDistance = Infinity;
+
+            fatecs.forEach(fatec => {
+                const distance = haversineDistance(userLat, userLon, fatec.lat, fatec.lon);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closest = fatec;
+                }
+            });
+            
+            document.getElementById("closest-fatec-name").textContent = closest.name;
+            document.getElementById("closest-fatec-dist").textContent = `Aproximadamente ${minDistance.toFixed(1)} km de distância.`;
+        }
+
+        // --- LÓGICA DOS SENSORES E LOCALIZAÇÃO ---
+        function onLocationUpdate(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+
+            // Atualiza o marcador do usuário e a visão do mapa
+            userMarker.setLatLng([lat, lon]);
+            map.setView([lat, lon], 14);
+
+            // Atualiza a informação de localização no painel
+            document.getElementById("location").textContent = `Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`;
+
+            // Encontra e exibe a Fatec mais próxima
+            findClosestFatec(lat, lon);
+        }
+
+        function onLocationError(err) {
+            document.getElementById("location").textContent = `Erro: ${err.message}`;
+            document.getElementById("closest-fatec-name").textContent = "Não foi possível obter sua localização.";
+        }
+        
+        // Inicia o monitoramento da localização
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(onLocationUpdate, onLocationError, { enableHighAccuracy: true });
+        } else {
+            onLocationError({ message: "Geolocalização não suportada." });
+        }
+
+        // Bússola (funciona melhor em dispositivos móveis)
+        const compassHandler = (event) => {
+            if (event.webkitCompassHeading !== undefined || event.alpha !== null) {
+                const heading = event.webkitCompassHeading || (360 - event.alpha);
+                document.getElementById("compass-value").textContent = Math.round(heading);
+                document.getElementById("arrow").style.transform = `rotate(${heading}deg)`;
+            } else {
+                 document.getElementById("compass").textContent = "Não suportado.";
+            }
+        };
+        if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+             DeviceOrientationEvent.requestPermission()
+                .then(permissionState => {
+                    if (permissionState === 'granted') {
+                        window.addEventListener('deviceorientation', compassHandler);
+                    }
+                });
+        } else if (window.DeviceOrientationEvent) {
+            window.addEventListener('deviceorientation', compassHandler);
+        }
+
+        // Acelerômetro
+        if (window.DeviceMotionEvent) {
+            window.addEventListener("devicemotion", event => {
+                const { x, y, z } = event.accelerationIncludingGravity;
+                if (x !== null) {
+                    document.getElementById("motion").textContent = `${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`;
+                }
+            });
+        }
+
+        // Sensor de Luz
+        if ('AmbientLightSensor' in window) {
+            try {
+                const sensor = new AmbientLightSensor();
+                sensor.onreading = () => {
+                    document.getElementById("light").textContent = `${sensor.illuminance.toFixed(0)} lux`;
+                };
+                sensor.onerror = (event) => {
+                     document.getElementById("light").textContent = `Erro: ${event.error.message}`;
+                };
+                sensor.start();
+            } catch (err) {
+                 document.getElementById("light").textContent = `Erro: ${err.message}`;
+            }
+        }
+    </script>
 </body>
 </html>
